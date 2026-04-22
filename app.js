@@ -15,7 +15,6 @@ app.use((req, res, next) => {
 
 app.get("/", (req, res) => {
    res.send("Hello, World!");
-  throw(new Error("something bad happened!"));
 });
 
 app.post("/testpost", (req, res) => {
