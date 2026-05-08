@@ -87,7 +87,7 @@ const update = (req, res) => {
     const {error, value} = patchTaskSchema.validate(req.body, { abortEarly: false });
 
     if (error){
-        return res.stats(400).json({ message: error.message});
+        return res.status(400).json({ message: error.message});
     }
     
     const taskToFind = parseInt(req.params?.id);
