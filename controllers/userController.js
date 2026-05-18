@@ -3,6 +3,7 @@ const { StatusCodes } = require("http-status-codes");
 const crypto = require("crypto");
 const util = require("util");
 const { userSchema } = require("../validation/userSchema");
+const pool = require("../db/pg-pool");
 const scrypt = util.promisify(crypto.scrypt);
 
 async function hashPassword(password) {
@@ -18,33 +19,65 @@ async function comparePassword(inputPassword, storedHash) {
   return crypto.timingSafeEqual(keyBuffer, derivedKey);
 }
 
-const register = async (req, res) => {
+const register = async (req, res, next) => {
     if (!req.body) req.body = {};
-    const { error, value} = userSchema.validate(req.body, { abortEarly: false});
-    if (error) return res.status(400).json({ message: error.message });
+        
+        const { error, value } = userSchema.validate(req.body, { abortEarly: false });
+        if (error) {
+            return res.status(400).json({
+            message: "Validation failed",
+            details: error.details,
+            });
+        }
+        let user = null;
+        value.hashed_password = await hashPassword(value.password);
+        // the code to here is like the in-memory version
+        try {
+            user = await pool.query(`INSERT INTO users (email, name, hashed_password) 
+            VALUES ($1, $2, $3) RETURNING id, email, name`,
+            [value.email, value.name, value.hashed_password]
+            ); // note that you use a parameterized query
+        } catch (e) { // the email might already be registered
+        if (e.code === "23505") { // this means the unique constraint for email was violated
+            // here you return the 400 and the error message.  Use a return statement, so that 
+            // you don't keep going in this function
+         return res.status(400).json({ message: "Email is already registered." });
 
-    const hashedPassword = await hashPassword(value.password)
+        }
+        return next(e); // all other errors get passed to the error handler
+        }
+        // otherwise user now contains the new user.  You can return a 201 and the appropriate
+        // object.  Be sure to also set global.user_id with the id of the user record you just created. 
+    const newUser = user.rows[0];
+    global.user_id = newUser.id; 
+
+    return res.status(201).json({
+    name: newUser.name,
+    email: newUser.email
+    });
+    };
 
 
-    const newUser = { ...value, password: hashedPassword };
-    global.users.push(newUser);
-    global.user_id = newUser;
-    
-    const { password, ...sanitizedUser} = newUser;
-    res.status(201).json(sanitizedUser);
-};
-
-const logon = async (req, res) => {
+const logon = async (req, res, next) => {
     const { email, password } = req.body;
-    const user = global.users.find(u => u.email === email);
+    
+    try {
+        const result = await pool.query("SELECT * FROM users WHERE email = $1", [email]);
 
-    if (user && await comparePassword(password, user.password)) {
-        global.user_id = user;
+        if (result.rows.length === 0) {
+            return res.status(StatusCodes.UNAUTHORIZED).json({ message: "Authentication Failed" });
+        }
 
-        res.status(StatusCodes.OK).json({ name: user.name, email: user.email });
-    } 
-    else {
-        res.status(StatusCodes.UNAUTHORIZED).json({ message: "Authentication Failed" });
+        const user = result.rows[0];
+
+        if (await comparePassword(password, user.hashed_password)) {
+            global.user_id = user.id;  
+            return res.status(StatusCodes.OK).json({ name: user.name, email: user.email });
+        } else {
+            return res.status(StatusCodes.UNAUTHORIZED).json({ message: "Authentication Failed" });
+        }
+    } catch (err) {
+        return next(err);
     }
 };
 
