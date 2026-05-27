@@ -71,8 +71,6 @@ async function shutdown(code = 0) {
     await new Promise(resolve => server.close(resolve));
     console.log('HTTP server closed.');
     // If you have DB connections, close them here
-    await pool.end();
-    console.log("pg pool disconnected");
     await prisma.$disconnect();
     console.log("Prisma disconnected");
   } catch (err) {
