@@ -5,7 +5,7 @@ const app = express();
 const errorHandler = require("./middleware/error-handler");
 const notFound = require("./middleware/not-found");
 const prisma = require("./db/prisma");
-
+const analyticsRouter = require("./routes/analyticsRoutes");
 
 
 global.user_id = null;
@@ -24,6 +24,8 @@ app.get('/health', async (req, res) => {
 });
 
 app.use("/api/tasks", authMiddleware, taskRouter);
+app.use("/api/analytics", authMiddleware, analyticsRouter);
+
 
 
 app.use((req, res, next) => {

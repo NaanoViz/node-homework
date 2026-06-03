@@ -15,12 +15,14 @@ const create = async (req, res, next) => {
             data: {
                 title: value.title,
                 isCompleted: value.isCompleted || false, 
+                priority: value.priority,
                 userId: global.user_id,          
             },
             select: { 
                 id: true, 
                 title: true, 
-                isCompleted: true 
+                isCompleted: true,
+                priority: true
             }
         });
 
@@ -34,19 +36,68 @@ const create = async (req, res, next) => {
 
 const index = async (req, res, next) => {
 
-    try {
+    try {   
+        const page = parseInt(req.query.page) || 1;
+        const limit = parseInt(req.query.limit) || 10;
+
+        if (page < 1) page = 1;
+        if (limit < 1 || limit > 100) limit = 10;
+        
+        const skip = (page - 1) * limit;
+
+        const whereClause = { userId: global.user_id };
+
+        if (req.query.find) {
+            whereClause.title = {
+                contains: req.query.find, // Matches %find% pattern
+                mode: 'insensitive' // Case-insensitive search (ILIKE in PostgreSQL)
+            };
+        }
+
+
          const userTasks = await prisma.task.findMany({
-            where: {
-                userId: global.user_id, 
-            },
-            select: { title: true, isCompleted: true, id: true }
+            where: whereClause,
+            select: { 
+                id: true,
+                title: true, 
+                isCompleted: true,
+                priority: true,
+                createdAt: true,
+                User: {  
+                  select: {
+                    name: true,
+                    email: true
+                }
+            }
+        },
+            skip: skip,
+            take: limit,
+            orderBy: { createdAt: 'desc' }
+     });
+
+        const totalTasks = await prisma.task.count({
+            where: whereClause
         });
+
 
         if (userTasks.length === 0) {
             return res.status(404).json({ message: "No tasks found" });
         }
+         const totalPages = Math.ceil(totalTasks / limit) || 1;
 
-        return res.json(userTasks);
+        const pagination = {
+            page: page,
+            limit: limit,
+            total: totalTasks,
+            pages: totalPages,
+            hasNext: page < totalPages,
+            hasPrev: page > 1
+        };
+
+        return res.status(200).json({
+            tasks: userTasks,
+            pagination: pagination
+        });
     } catch (err) {
         if (typeof next === "function") return next(err);
         return res.status(500).json({ message: "Database error" });
@@ -101,7 +152,18 @@ const show = async (req, res, next) => {
                     userId: global.user_id,
                 },
             },
-            select: { id: true, title: true, isCompleted: true }
+            select: { 
+                id: true, 
+                title: true, 
+                isCompleted: true, 
+                priority:true, 
+                createdAt: true,
+                User: { 
+                    select: {
+                        name: true,
+                        email: true
+                    }
+                }}
         });
 
         return res.json(task);
@@ -143,7 +205,7 @@ const update = async (req, res, next) => {
                     userId: global.user_id,
                 },
             },
-            select: { title: true, isCompleted: true, id: true }
+            select: { title: true, isCompleted: true, id: true, priority: true }
         });
 
         return res.json(task);
@@ -157,4 +219,51 @@ const update = async (req, res, next) => {
     }
 };
 
-module.exports = { create, index, show, update, deleteTask };
+// Bulk create with validation
+
+const bulkCreate = async (req, res, next) => {  
+    const { tasks } = req.body;
+
+  // Validate the tasks array
+  if (!tasks || !Array.isArray(tasks) || tasks.length === 0) {
+    return res.status(400).json({ 
+      error: "Invalid request data. Expected an array of tasks." 
+    });
+  }
+
+  // Validate all tasks before insertion
+  const validTasks = [];
+  for (const task of tasks) {
+    const { error, value } = taskSchema.validate(task, { abortEarly: false });
+    if (error) {
+      return res.status(400).json({
+        error: "Validation failed",
+        details: error.details,
+      });
+    }
+    validTasks.push({
+      title: value.title,
+      isCompleted: value.isCompleted || false,
+      priority: value.priority || 'medium',
+      userId: global.user_id
+    });
+  }
+
+  // Use createMany for batch insertion
+  try {
+    const result = await prisma.task.createMany({
+      data: validTasks,
+      skipDuplicates: false
+    });
+
+    return res.status(201).json({
+      message: "Bulk task creation successful",
+      tasksCreated: result.count,
+      totalRequested: validTasks.length
+    });
+  } catch (err) {
+    if (typeof next === "function") return next(err);
+    return res.status(500).json({ message: "Database error" });
+  }
+};
+module.exports = { create, index, show, update, deleteTask, bulkCreate };
