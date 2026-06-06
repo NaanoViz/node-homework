@@ -29,7 +29,6 @@ const register = async (req, res, next) => {
             details: error.details,
             });
         }
-        let user = null;
         value.hashedPassword = await hashPassword(value.password);
         delete value.password;
         // the code to here is like the in-memory version
@@ -39,34 +38,64 @@ const register = async (req, res, next) => {
         // delete value.password as that doesn't get stored
 
         try {
-        user = await prisma.user.create({
+        const result = await prisma.$transaction(async (tx) => {
+            
+         const newUser = await tx.user.create({
             data: { 
                 name: value.name, 
                 email: value.email.toLowerCase(), // Force lowercase representation
                 hashedPassword: value.hashedPassword 
             },
-            select: { name: true, email: true, id: true }// specify the column values to return
+            select: { id: true, name: true, email: true, createdAt: true } // specify the column values to return
         });
-        } catch (err) {
-            if (err.name === "PrismaClientKnownRequestError" && err.code === "P2002") {
-            // send the appropriate error back -- the email was already registered
-            return res.status(400).json({ message: "The email was already registered." });
-            } else {
-            return next(err); // the error handler takes care of other errors
-            }
-        }
+
+        const welcomeTaskData = [
+                { title: "Complete your profile", userId: newUser.id, priority: "medium" },
+                { title: "Add your first task", userId: newUser.id, priority: "high" },
+                { title: "Explore the app", userId: newUser.id, priority: "low" }
+            ];
+            await tx.task.createMany({ data: welcomeTaskData });
+        
+            const welcomeTasks = await tx.task.findMany({
+                where: {
+                    userId: newUser.id,
+                    title: { in: welcomeTaskData.map(t => t.title) }
+                },
+                select: {
+                    id: true,
+                    title: true,
+                    isCompleted: true,
+                    userId: true,
+                    priority: true
+                }
+            });
+
+            return { user: newUser, welcomeTasks };
+        });
+
+
         // otherwise register succeeded, so set global.user_id with user.id, and do the
         // appropriate res.status().json().
         // otherwise user now contains the new user.  You can return a 201 and the appropriate
         // object.  Be sure to also set global.user_id with the id of the user record you just created. 
-    global.user_id = user.id; 
+    global.user_id = result.user.id; 
 
     return res.status(201).json({
-        name: user.name,
-        email: user.email
+        user: result.user,      
+        welcomeTasks: result.welcomeTasks, 
+        transactionStatus: "success"
     });
-    };
+    
 
+        } catch (err) {
+            if (err.code === "P2002") { 
+            return res.status(400).json({ error: "Email already registered" }); 
+        } else {
+            return next(err);
+        }
+    }
+
+    };
 
 const logon = async (req, res, next) => {
     let { email, password } = req.body;
@@ -74,7 +103,16 @@ const logon = async (req, res, next) => {
     try {
         email = email.toLowerCase() // Joi validation always converts the email to lower case
                             // but you don't want logon to fail if the user types mixed case
-        const user = await prisma.user.findUnique({ where: { email }});
+        const user = await prisma.user.findUnique({ 
+            where: { email },
+              select: {
+                id: true,
+                name: true,
+                email: true,
+                hashedPassword: true // Needed to run comparePassword securely
+            }
+        
+        });
                             // also Prisma findUnique can't do a case insensitive search
 
         if (!user) {
