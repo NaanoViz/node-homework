@@ -1,4 +1,5 @@
-const authMiddleware = require("./middleware/auth");
+// const authMiddleware = require("./middleware/auth"); Unneeded
+
 const taskRouter = require("./routers/taskRoutes"); 
 const express = require("express");
 const app = express();
@@ -7,12 +8,31 @@ const notFound = require("./middleware/not-found");
 const prisma = require("./db/prisma");
 const analyticsRouter = require("./routes/analyticsRoutes");
 
+const helmet = require("helmet");
+const { xss } = require("express-xss-sanitizer");
+const rateLimiter = require("express-rate-limit");
+const cookieParser = require("cookie-parser");
+const jwtMiddleware = require("./middleware/jwtMiddleware");
 
-global.user_id = null;
-global.users = [];
-global.tasks = [];
+app.set("trust proxy", 1);
+
+app.use(
+  rateLimiter({
+    windowMs: 15 * 60 * 1000,
+    max: 100, 
+  }),
+);
+
+app.use(helmet());
 
 app.use(express.json({ limit: "1kb" }));
+
+app.use(cookieParser());
+
+app.use(xss());
+
+global.users = [];
+global.tasks = [];
 
 app.get('/health', async (req, res) => {
   try {
@@ -23,8 +43,8 @@ app.get('/health', async (req, res) => {
   }
 });
 
-app.use("/api/tasks", authMiddleware, taskRouter);
-app.use("/api/analytics", authMiddleware, analyticsRouter);
+app.use("/api/tasks", taskRouter);
+app.use("/api/analytics", jwtMiddleware, analyticsRouter);
 
 
 
