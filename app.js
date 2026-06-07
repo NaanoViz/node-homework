@@ -8,6 +8,7 @@ const notFound = require("./middleware/not-found");
 const prisma = require("./db/prisma");
 const analyticsRouter = require("./routes/analyticsRoutes");
 
+const cors = require("cors");
 const helmet = require("helmet");
 const { xss } = require("express-xss-sanitizer");
 const rateLimiter = require("express-rate-limit");
@@ -15,6 +16,13 @@ const cookieParser = require("cookie-parser");
 const jwtMiddleware = require("./middleware/jwtMiddleware");
 
 app.set("trust proxy", 1);
+
+app.use(cors({
+  origin: process.env.FRONTEND_URL || "http://localhost:3001",
+  credentials: true,
+  methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+  allowedHeaders: ["Content-Type", "Authorization", "X-CSRF-TOKEN"]
+}));
 
 app.use(
   rateLimiter({
@@ -30,9 +38,6 @@ app.use(express.json({ limit: "1kb" }));
 app.use(cookieParser());
 
 app.use(xss());
-
-global.users = [];
-global.tasks = [];
 
 app.get('/health', async (req, res) => {
   try {

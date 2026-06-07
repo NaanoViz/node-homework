@@ -24,10 +24,12 @@ async function comparePassword(inputPassword, storedHash) {
 }
 
 const cookieFlags = (req) => {
+  const isProd = process.env.NODE_ENV === "production";
   return {
     httpOnly: true,
-    secure: process.env.NODE_ENV === "production", // only when HTTPS is available
-    sameSite: "Strict",
+    secure: isProd, 
+    sameSite: isProd ? "None" : "Lax",
+    ...(isProd && { domain: process.env.COOKIE_DOMAIN || ".render.com" }) 
   };
 };
 
