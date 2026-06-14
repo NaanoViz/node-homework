@@ -37,6 +37,7 @@ afterAll(() => {
 const { EventEmitter } = require("events")
 
 it("14. cant create a task without a user id", async () => {
+    expect.assertions(1);
     const req = httpMocks.createRequest({
       method: "POST",
       body: { title: "first task" },
