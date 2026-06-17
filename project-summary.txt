@@ -1,1 +1,25 @@
 https://node-homework-tqpd.onrender.com/
+
+
+Assignment 11
+
+I implemented Option 11.3.7 - Bulk Update or Delete.
+
+In this version, Any users can now delete multiple tasks simultaneously by sending an array of task IDs in a single request body.
+
+NEW / MODIFIED APIS FOR REVIEW:
+
+1. Bulk Delete Tasks
+   - Path: /api/tasks/bulk-delete
+   - Method: DELETE
+   - Headers: 
+     * Authorization: Bearer <JWT_TOKEN>
+     * Content-Type: application/json
+   - Query Parameters: None
+   - Body (JSON):
+     {
+       "ids": [1, 2, 3]
+     }
+   - How it Works:
+     * Show return a 200 OK with a count of deleted items listing if  "Successfully deleted 3 tasks.", "count": 3.
+     * Taks matching IDs deleted for specific User

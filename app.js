@@ -51,8 +51,6 @@ app.get('/health', async (req, res) => {
 app.use("/api/tasks", taskRouter);
 app.use("/api/analytics", jwtMiddleware, analyticsRouter);
 
-
-
 app.use((req, res, next) => {
   console.log(`Method: ${req.method}`);
   console.log(`Path: ${req.path}`);
