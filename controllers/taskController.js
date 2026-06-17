@@ -266,4 +266,44 @@ const bulkCreate = async (req, res, next) => {
     return res.status(500).json({ message: "Database error" });
   }
 };
-module.exports = { create, index, show, update, deleteTask, bulkCreate };
+
+
+// Bulk Deleting
+
+const bulkDelete = async (req, res, next) => {
+    const { ids } = req.body;
+
+    
+    if (!ids || !Array.isArray(ids) || ids.length === 0) {
+        return res.status(400).json({ message: "Please provide an array of task IDs." });
+    }
+
+    try {
+        const parsedIds = ids.map(id => parseInt(id)).filter(id => !isNaN(id));
+
+        if (parsedIds.length === 0) {
+            return res.status(400).json({ message: "No valid integer IDs were provided." });
+        }
+        const deleteResult = await prisma.task.deleteMany({
+            where: {
+                id: {
+                    in: parsedIds,
+                },
+                userId: req.user.id,
+            },
+        });
+
+        if (deleteResult.count === 0) {
+            return res.status(404).json({ message: "No matching tasks found to delete." });
+        }
+
+        return res.status(200).json({
+            message: `Successfully deleted ${deleteResult.count} tasks.`,
+            count: deleteResult.count
+        });
+    } catch (err) {
+        if (typeof next === "function") return next(err);
+        return res.status(500).json({ message: "Database error" });
+    }
+};
+module.exports = { create, index, show, update, deleteTask, bulkCreate, bulkDelete };
